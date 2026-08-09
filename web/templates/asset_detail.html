@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom: var(--space-3);">
+  <a class="back-link" href="/" style="margin: 0;">&larr; Back</a>
+  <span>
+    {% if let Some(prev) = prev_id %}<a class="back-link" href="/assets/{{ prev }}" style="margin: 0;">&larr; Prev</a>{% endif %}
+    {% if let Some(next) = next_id %}<a class="back-link" href="/assets/{{ next }}" style="margin: 0 0 0 var(--space-3);">Next &rarr;</a>{% endif %}
+  </span>
+</div>
+
+<div class="detail">
+  <div class="preview" id="preview">
+    {% if asset.content_type.starts_with("video/") %}
+    <video src="/blobs/{{ asset.hash }}" controls style="width: 100%; display: block;"></video>
+    {% else %}
+    <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}" id="preview-img" title="Click to view fullscreen">
+    {% endif %}
+  </div>
+  <div class="panel">
+    <h2>Info</h2>
+    <dl>
+      <dt>Name</dt>
+      <dd>{{ asset.original_filename }}</dd>
+      <dt>Type</dt>
+      <dd>{{ asset.content_type }}</dd>
+      <dt>Size</dt>
+      <dd>{{ asset.size_bytes|human_size }}</dd>
+      <dt>Uploaded</dt>
+      <dd>{{ asset.created_at.format("%Y-%m-%d %H:%M") }}</dd>
+      {% if let Some(m) = metadata %}
+        {% if let Some(taken) = m.taken_at_local %}
+        <dt>Taken</dt>
+        <dd>{{ taken.format("%Y-%m-%d %H:%M") }}{% if let Some(offset) = m.taken_at_offset_minutes %} (UTC{{ offset }}min){% endif %}</dd>
+        {% endif %}
+        {% if let Some(camera) = m.camera %}
+        <dt>Camera</dt>
+        <dd>{{ camera }}</dd>
+        {% endif %}
+        {% if let Some(lat) = m.gps_lat %}
+        <dt>Location</dt>
+        <dd>{{ lat }}, {{ m.gps_lon.unwrap() }}</dd>
+        {% endif %}
+      {% endif %}
+    </dl>
+
+    <h2>Owner</h2>
+    <form action="/assets/{{ asset.id }}/owner" method="post" style="margin-bottom: var(--space-1);">
+      <select name="owner_id" onchange="this.form.submit()">
+        <option value="" {% if asset.owner_id.is_none() %}selected{% endif %}>Unassigned</option>
+        {% for o in owners %}
+        <option value="{{ o.id }}" {% if asset.owner_id.as_deref() == Some(o.id.as_str()) %}selected{% endif %}>{{ o.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form class="new-collection" action="/owners" method="post" style="padding: 0;">
+      <input type="text" name="name" placeholder="New owner">
+      <button type="submit" title="Create">+</button>
+    </form>
+
+    <h2>Collections</h2>
+    {% if in_collections.is_empty() %}
+    <p class="empty" style="padding: 0; text-align: left;">Not in any collection.</p>
+    {% else %}
+    <ul class="chip-list">
+      {% for c in in_collections %}
+      <li class="chip">
+        <a href="/collections/{{ c.id }}">{{ c.name }}</a>
+        <form action="/collections/remove-asset" method="post">
+          <input type="hidden" name="asset_id" value="{{ asset.id }}">
+          <input type="hidden" name="collection_id" value="{{ c.id }}">
+          <button type="submit" title="Remove">&times;</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if !available_collections.is_empty() %}
+    <form action="/collections/add-asset" method="post" style="margin-top: var(--space-2);">
+      <input type="hidden" name="asset_id" value="{{ asset.id }}">
+      <select name="collection_id" onchange="this.form.submit()">
+        <option value="" selected disabled>Add to collection…</option>
+        {% for c in available_collections %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+
+    <form action="/assets/{{ asset.id }}/delete" method="post"
+          onsubmit="return confirm('Delete this item permanently?')" style="margin-top: var(--space-5);">
+      <button type="submit" style="background: none; border: 1px solid var(--muted); color: var(--muted); border-radius: var(--radius); padding: var(--space-2); width: 100%; cursor: pointer; font-size: 0.85rem;">
+        Delete
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var img = document.getElementById('preview-img');
+    if (!img) return;
+    var preview = document.getElementById('preview');
+    function close() { preview.classList.remove('fullscreen'); }
+    img.addEventListener('click', function () { preview.classList.toggle('fullscreen'); });
+    preview.addEventListener('click', function (e) { if (e.target === preview) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  })();
+</script>
+{% endblock %}

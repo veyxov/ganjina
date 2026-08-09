@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ganjina{% block title %}{% endblock %}</title>
+  <script>
+    if (localStorage.getItem('sidebar-collapsed') === '1') {
+      document.documentElement.classList.add('sidebar-collapsed');
+    }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111113;
+      --sidebar-bg: #17171a;
+      --surface: #1b1b1e;
+      --surface-hover: #232326;
+      --fg: #ededef;
+      --muted: #8b8d93;
+      --accent: #e0a446;
+      --radius: 10px;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 16px;
+      --space-4: 24px;
+      --space-5: 40px;
+      --sidebar-w: 200px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .shell { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      flex: none;
+      width: var(--sidebar-w);
+      background: var(--sidebar-bg);
+      padding: var(--space-4) var(--space-3);
+      overflow: hidden;
+      transition: width 0.2s ease, padding 0.2s ease, opacity 0.15s ease;
+    }
+    html.sidebar-collapsed .sidebar {
+      width: 0;
+      padding-left: 0;
+      padding-right: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sidebar-toggle {
+      flex: none;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: var(--radius);
+      margin-right: var(--space-2);
+    }
+    .sidebar-toggle:hover { background: var(--surface); color: var(--fg); }
+    .sidebar-toggle svg { width: 16px; height: 16px; }
+
+    .brand {
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin-bottom: var(--space-5);
+      padding: 0 var(--space-2);
+    }
+
+    .nav { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+    .nav a {
+      display: block;
+      padding: var(--space-2);
+      border-radius: var(--radius);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: background 0.15s ease, color 0.15s ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nav a:hover { background: var(--surface-hover); color: var(--fg); }
+    .nav a.active { background: var(--surface); color: var(--accent); font-weight: 600; }
+
+    .nav-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding: 0 var(--space-2);
+      margin-bottom: var(--space-1);
+    }
+
+    .new-collection {
+      display: flex;
+      gap: var(--space-1);
+      padding: 0 var(--space-2);
+      margin-top: var(--space-1);
+    }
+    .new-collection input {
+      flex: 1;
+      min-width: 0;
+      background: var(--surface);
+      border: none;
+      border-radius: var(--radius);
+      color: var(--fg);
+      font-size: 0.8rem;
+      padding: var(--space-1) var(--space-2);
+    }
+    .new-collection input::placeholder { color: var(--muted); }
+    .new-collection button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.95rem;
+      padding: 0 var(--space-1);
+    }
+    .new-collection button:hover { color: var(--accent); }
+
+    main.content {
+      flex: 1;
+      min-width: 0;
+      padding: var(--space-4) var(--space-4) var(--space-5);
+    }
+
+    .topbar { margin-bottom: var(--space-3); }
+
+    main.content > .page { max-width: 960px; margin: 0 auto; }
+
+    header.page-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: var(--space-5);
+    }
+
+    h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin: 0;
+    }
+
+    .count { color: var(--muted); font-size: 0.85rem; }
+
+    .dropzone {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      padding: var(--space-4);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+      margin-bottom: var(--space-5);
+    }
+    .dropzone:hover { background: var(--surface-hover); color: var(--fg); }
+    .dropzone input { display: none; }
+    .dropzone svg { width: 18px; height: 18px; opacity: 0.8; flex: none; }
+
+    .month-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin: var(--space-5) 0 var(--space-3);
+    }
+    .month-label:first-of-type { margin-top: 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+
+    .tile {
+      position: relative;
+      display: block;
+      aspect-ratio: 1;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+      transition: transform 0.15s ease;
+    }
+    .tile:hover { transform: translateY(-2px); }
+    .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .tile .name {
+      position: absolute;
+      inset: auto 0 0 0;
+      padding: var(--space-2) var(--space-2) var(--space-1);
+      font-size: 0.72rem;
+      color: #fff;
+      background: linear-gradient(to top, rgba(0,0,0,0.65), transparent);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .tile:hover .name { opacity: 1; }
+
+    .empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: var(--space-5) 0;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-bottom: var(--space-4);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .back-link:hover { color: var(--fg); }
+
+    .detail { display: flex; gap: var(--space-4); align-items: flex-start; }
+    .detail .preview {
+      flex: 1;
+      min-width: 0;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+      display: flex;
+    }
+    .detail .preview img { width: 100%; display: block; cursor: zoom-in; }
+
+    .detail .preview.fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: #000;
+      border-radius: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+    .detail .preview.fullscreen img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      cursor: zoom-out;
+    }
+
+    .detail .panel { flex: none; width: 260px; font-size: 0.85rem; }
+    .detail .panel h2 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: var(--space-4) 0 var(--space-2);
+    }
+    .detail .panel h2:first-child { margin-top: 0; }
+    .detail .panel dl { margin: 0; }
+    .detail .panel dt { color: var(--muted); }
+    .detail .panel dd { margin: 0 0 var(--space-2); word-break: break-all; }
+
+    .detail .panel select {
+      width: 100%;
+      background: var(--surface);
+      color: var(--fg);
+      border: none;
+      border-radius: var(--radius);
+      padding: var(--space-2);
+      font-size: 0.85rem;
+    }
+
+    .chip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+    .chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: var(--space-1) var(--space-2);
+    }
+    .chip a { color: var(--fg); text-decoration: none; font-size: 0.82rem; }
+    .chip button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0 0 0 var(--space-2);
+    }
+    .chip button:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">Ganjina</div>
+      <ul class="nav">
+        <li><a href="/" class="{% if active_collection.is_none() %}active{% endif %}">Photos</a></li>
+      </ul>
+
+      <div class="nav-label">Collections</div>
+      <ul class="nav">
+        {% for c in collections %}
+        <li><a href="/collections/{{ c.id }}" class="{% if active_collection.as_deref() == Some(c.id.as_str()) %}active{% endif %}">{{ c.name }}</a></li>
+        {% endfor %}
+      </ul>
+      <form class="new-collection" action="/collections" method="post">
+        <input type="text" name="name" placeholder="New collection" required>
+        <button type="submit" title="Create">+</button>
+      </form>
+    </aside>
+    <main class="content">
+      <div class="topbar">
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="page">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  <script>
+    document.getElementById('sidebar-toggle').addEventListener('click', function () {
+      var collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
+      localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+    });
+  </script>
+</body>
+</html>
