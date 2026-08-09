@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Asset, Collection, Owner, PhotoMetadata } from '../types';
   import { api, humanSize } from '../api';
-  import { navigate } from '../router';
+  import { navigate } from '../router.svelte';
 
   let { id }: { id: string } = $props();
 

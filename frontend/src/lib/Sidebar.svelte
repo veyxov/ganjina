@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Collection } from './types';
   import { api } from './api';
-  import { navigate, currentRoute } from './router';
-  import { sidebarCollapsed } from './sidebar';
+  import { navigate, currentRoute } from './router.svelte';
+  import { sidebarCollapsed } from './sidebarState.svelte';
 
   let { collections, onCollectionsChanged }: { collections: Collection[]; onCollectionsChanged: () => void } =
     $props();

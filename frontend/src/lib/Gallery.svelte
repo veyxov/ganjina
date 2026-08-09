@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Asset } from './types';
   import { api, monthLabel } from './api';
-  import { navigate } from './router';
+  import { navigate } from './router.svelte';
 
   let {
     title,

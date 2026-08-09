@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Asset, Collection } from './lib/types';
   import { api } from './lib/api';
-  import { currentRoute } from './lib/router';
-  import { toggleSidebar } from './lib/sidebar';
+  import { currentRoute } from './lib/router.svelte';
+  import { toggleSidebar } from './lib/sidebarState.svelte';
   import Sidebar from './lib/Sidebar.svelte';
   import Gallery from './lib/Gallery.svelte';
   import CollectionView from './lib/views/CollectionView.svelte';
