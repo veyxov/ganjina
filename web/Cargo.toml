@@ -9,9 +9,8 @@ photos = { path = "../photos" }
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "fs"] }
 tokio-util = { version = "0.7", features = ["io"] }
-askama = "0.12"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tower-http = { version = "0.6", features = ["trace"] }
+tower-http = { version = "0.6", features = ["trace", "fs"] }
 serde = { version = "1", features = ["derive"] }
