@@ -32,8 +32,12 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let data_dir = std::path::Path::new("data");
-    tokio::fs::create_dir_all(data_dir).await?;
+    // Relative to CWD unless overridden — GANJINA_DATA_DIR avoids storage silently
+    // moving if the binary gets launched from a different working directory.
+    let data_dir = std::env::var("GANJINA_DATA_DIR").unwrap_or_else(|_| "data".into());
+    tokio::fs::create_dir_all(&data_dir).await?;
+    let data_dir = tokio::fs::canonicalize(&data_dir).await?;
+    tracing::info!(data_dir = %data_dir.display(), "using data directory");
 
     let pool = db::connect(&data_dir.join("vault.sqlite3")).await?;
     let store = Arc::new(BlobStore::new(data_dir.join("blobs")));
