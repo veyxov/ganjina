@@ -66,3 +66,91 @@ pub async fn list_assets(pool: &Pool) -> anyhow::Result<Vec<Asset>> {
     .await?;
     Ok(rows)
 }
+
+#[derive(sqlx::FromRow)]
+pub struct Collection {
+    pub id: String,
+    pub name: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn create_collection(pool: &Pool, name: &str) -> anyhow::Result<String> {
+    let id = Uuid::now_v7().to_string();
+    sqlx::query("INSERT INTO collections (id, name, created_at) VALUES (?, ?, ?)")
+        .bind(&id)
+        .bind(name)
+        .bind(chrono::Utc::now())
+        .execute(pool)
+        .await?;
+    Ok(id)
+}
+
+pub async fn list_collections(pool: &Pool) -> anyhow::Result<Vec<Collection>> {
+    let rows = sqlx::query_as::<_, Collection>(
+        "SELECT id, name, created_at FROM collections ORDER BY name",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn collection_by_id(pool: &Pool, id: &str) -> anyhow::Result<Option<Collection>> {
+    let row =
+        sqlx::query_as::<_, Collection>("SELECT id, name, created_at FROM collections WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row)
+}
+
+pub async fn add_asset_to_collection(
+    pool: &Pool,
+    collection_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO collection_assets (collection_id, asset_id) VALUES (?, ?)",
+    )
+    .bind(collection_id)
+    .bind(asset_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn list_assets_in_collection(pool: &Pool, collection_id: &str) -> anyhow::Result<Vec<Asset>> {
+    let rows = sqlx::query_as::<_, Asset>(
+        "SELECT a.id, a.hash, a.original_filename, a.size_bytes, a.content_type, a.created_at
+         FROM assets a
+         JOIN collection_assets ca ON ca.asset_id = a.id
+         WHERE ca.collection_id = ?
+         ORDER BY a.created_at DESC",
+    )
+    .bind(collection_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// Links two assets of any type (e.g. a note and the photo it's about). Stores
+/// the pair in canonical order so (a, b) and (b, a) collapse to one link. No
+/// callers yet — schema/API groundwork for the notes module, ready without a
+/// future migration.
+#[allow(dead_code)]
+pub async fn link_assets(pool: &Pool, asset_a: &str, asset_b: &str) -> anyhow::Result<()> {
+    let (a, b) = if asset_a <= asset_b {
+        (asset_a, asset_b)
+    } else {
+        (asset_b, asset_a)
+    };
+    sqlx::query(
+        "INSERT OR IGNORE INTO asset_links (id, asset_a, asset_b, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(Uuid::now_v7().to_string())
+    .bind(a)
+    .bind(b)
+    .bind(chrono::Utc::now())
+    .execute(pool)
+    .await?;
+    Ok(())
+}

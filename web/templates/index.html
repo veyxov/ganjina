@@ -17,16 +17,5 @@
   </label>
 </form>
 
-{% if assets.is_empty() %}
-<p class="empty">Nothing here yet.</p>
-{% else %}
-<div class="grid">
-  {% for asset in assets %}
-  <div class="tile">
-    <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}" loading="lazy">
-    <span class="name">{{ asset.original_filename }}</span>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
+{% include "gallery.html" %}
 {% endblock %}

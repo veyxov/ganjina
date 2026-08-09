@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use askama::Template;
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Form, Multipart, Path, State},
     http::{header, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -21,6 +21,28 @@ struct AppState {
 #[template(path = "index.html")]
 struct IndexTemplate {
     assets: Vec<db::Asset>,
+    collections: Vec<db::Collection>,
+    active_collection: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "collection.html")]
+struct CollectionTemplate {
+    assets: Vec<db::Asset>,
+    collections: Vec<db::Collection>,
+    active_collection: Option<String>,
+    collection_name: String,
+}
+
+#[derive(serde::Deserialize)]
+struct CreateCollection {
+    name: String,
+}
+
+#[derive(serde::Deserialize)]
+struct AddAssetToCollection {
+    asset_id: String,
+    collection_id: String,
 }
 
 #[tokio::main]
@@ -48,6 +70,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/", get(index))
         .route("/upload", post(upload))
         .route("/blobs/{hash}", get(serve_blob))
+        .route("/collections", post(create_collection))
+        .route("/collections/{id}", get(view_collection))
+        .route("/collections/add-asset", post(add_asset_to_collection))
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 
@@ -59,8 +84,59 @@ async fn main() -> anyhow::Result<()> {
 
 async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let assets = db::list_assets(&state.pool).await?;
-    let html = IndexTemplate { assets }.render()?;
+    let collections = db::list_collections(&state.pool).await?;
+    let html = IndexTemplate {
+        assets,
+        collections,
+        active_collection: None,
+    }
+    .render()?;
     Ok(Html(html))
+}
+
+async fn view_collection(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Html<String>, AppError> {
+    let collection = db::collection_by_id(&state.pool, &id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let assets = db::list_assets_in_collection(&state.pool, &id).await?;
+    let collections = db::list_collections(&state.pool).await?;
+    let html = CollectionTemplate {
+        assets,
+        collections,
+        active_collection: Some(id),
+        collection_name: collection.name,
+    }
+    .render()?;
+    Ok(Html(html))
+}
+
+async fn create_collection(
+    State(state): State<AppState>,
+    Form(form): Form<CreateCollection>,
+) -> Result<Redirect, AppError> {
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("collection name required".into()));
+    }
+    let id = db::create_collection(&state.pool, name).await?;
+    tracing::info!(collection_id = %id, name, "created collection");
+    Ok(Redirect::to(&format!("/collections/{id}")))
+}
+
+async fn add_asset_to_collection(
+    State(state): State<AppState>,
+    Form(form): Form<AddAssetToCollection>,
+) -> Result<Redirect, AppError> {
+    db::add_asset_to_collection(&state.pool, &form.collection_id, &form.asset_id).await?;
+    tracing::info!(
+        collection_id = form.collection_id,
+        asset_id = form.asset_id,
+        "added asset to collection"
+    );
+    Ok(Redirect::to("/"))
 }
 
 async fn upload(
