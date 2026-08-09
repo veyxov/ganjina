@@ -47,6 +47,18 @@ impl BlobStore {
     pub fn read_path(&self, hash: &str) -> PathBuf {
         self.path_for(hash)
     }
+
+    /// Removes a blob file. Caller must confirm no other asset still
+    /// references this hash first (content-addressing means the same hash can
+    /// be shared — e.g. two different source images reducing to an identical
+    /// thumbnail) — deleting a still-referenced blob would break that asset.
+    pub async fn delete(&self, hash: &str) -> std::io::Result<()> {
+        match tokio::fs::remove_file(self.path_for(hash)).await {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 /// True if this looks like a valid hex hash (guards the `/blobs/{hash}` route

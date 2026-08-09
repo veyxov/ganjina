@@ -17,10 +17,26 @@ struct AppState {
     store: Arc<BlobStore>,
 }
 
+/// Groups already-sorted-by-created_at-desc assets into month buckets — since
+/// the input is presorted, matching consecutive items into groups is enough,
+/// no re-sort needed.
+fn group_by_month(assets: Vec<db::Asset>) -> Vec<(String, Vec<db::Asset>)> {
+    let mut groups: Vec<(String, Vec<db::Asset>)> = Vec::new();
+    for asset in assets {
+        let label = asset.created_at.format("%B %Y").to_string();
+        match groups.last_mut() {
+            Some((last_label, items)) if *last_label == label => items.push(asset),
+            _ => groups.push((label, vec![asset])),
+        }
+    }
+    groups
+}
+
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
-    assets: Vec<db::Asset>,
+    groups: Vec<(String, Vec<db::Asset>)>,
+    count: usize,
     collections: Vec<db::Collection>,
     active_collection: Option<String>,
     failed_count: i64,
@@ -29,7 +45,8 @@ struct IndexTemplate {
 #[derive(Template)]
 #[template(path = "collection.html")]
 struct CollectionTemplate {
-    assets: Vec<db::Asset>,
+    groups: Vec<(String, Vec<db::Asset>)>,
+    count: usize,
     collections: Vec<db::Collection>,
     active_collection: Option<String>,
     collection_name: String,
@@ -57,6 +74,18 @@ struct AssetDetailTemplate {
     metadata: Option<db::PhotoMetadata>,
     prev_id: Option<String>,
     next_id: Option<String>,
+    owners: Vec<db::Owner>,
+}
+
+#[derive(serde::Deserialize)]
+struct CreateOwner {
+    name: String,
+}
+
+#[derive(serde::Deserialize)]
+struct SetAssetOwner {
+    // Empty string means "unassign" — HTML forms can't submit a null.
+    owner_id: String,
 }
 
 #[tokio::main]
@@ -89,6 +118,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/collections/add-asset", post(add_asset_to_collection))
         .route("/collections/remove-asset", post(remove_asset_from_collection))
         .route("/assets/{id}", get(view_asset))
+        .route("/assets/{id}/delete", post(delete_asset))
+        .route("/assets/{id}/owner", post(set_asset_owner))
+        .route("/owners", post(create_owner))
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 
@@ -100,10 +132,12 @@ async fn main() -> anyhow::Result<()> {
 
 async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let assets = db::list_assets(&state.pool).await?;
+    let count = assets.len();
     let collections = db::list_collections(&state.pool).await?;
     let failed_count = db::failed_asset_count(&state.pool).await?;
     let html = IndexTemplate {
-        assets,
+        groups: group_by_month(assets),
+        count,
         collections,
         active_collection: None,
         failed_count,
@@ -120,9 +154,11 @@ async fn view_collection(
         .await?
         .ok_or(AppError::NotFound)?;
     let assets = db::list_assets_in_collection(&state.pool, &id).await?;
+    let count = assets.len();
     let collections = db::list_collections(&state.pool).await?;
     let html = CollectionTemplate {
-        assets,
+        groups: group_by_month(assets),
+        count,
         collections,
         active_collection: Some(id),
         collection_name: collection.name,
@@ -175,6 +211,7 @@ async fn view_asset(
 
     let metadata = db::photo_metadata_for_asset(&state.pool, &id).await?;
     let (prev_id, next_id) = db::adjacent_asset_ids(&state.pool, &id).await?;
+    let owners = db::list_owners(&state.pool).await?;
 
     let html = AssetDetailTemplate {
         asset,
@@ -185,9 +222,54 @@ async fn view_asset(
         metadata,
         prev_id,
         next_id,
+        owners,
     }
     .render()?;
     Ok(Html(html))
+}
+
+async fn set_asset_owner(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Form(form): Form<SetAssetOwner>,
+) -> Result<Redirect, AppError> {
+    let owner_id = if form.owner_id.is_empty() {
+        None
+    } else {
+        Some(form.owner_id.as_str())
+    };
+    db::set_asset_owner(&state.pool, &id, owner_id).await?;
+    Ok(Redirect::to(&format!("/assets/{id}")))
+}
+
+async fn create_owner(
+    State(state): State<AppState>,
+    Form(form): Form<CreateOwner>,
+) -> Result<Redirect, AppError> {
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("owner name required".into()));
+    }
+    db::create_owner(&state.pool, name).await?;
+    Ok(Redirect::to("/"))
+}
+
+async fn delete_asset(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Redirect, AppError> {
+    let Some((hash, thumbnail_hash)) = db::delete_asset(&state.pool, &id).await? else {
+        return Err(AppError::NotFound);
+    };
+
+    for h in [Some(hash), thumbnail_hash].into_iter().flatten() {
+        if !db::hash_still_referenced(&state.pool, &h).await? {
+            state.store.delete(&h).await?;
+        }
+    }
+
+    tracing::info!(asset_id = id, "deleted asset");
+    Ok(Redirect::to("/"))
 }
 
 async fn remove_asset_from_collection(

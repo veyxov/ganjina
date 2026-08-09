@@ -1,8 +1,10 @@
-{% if assets.is_empty() %}
+{% if groups.is_empty() %}
 <p class="empty">Nothing here yet.</p>
 {% else %}
+{% for (label, items) in groups %}
+<h2 class="month-label">{{ label }}</h2>
 <div class="grid">
-  {% for asset in assets %}
+  {% for asset in items %}
   <a class="tile" href="/assets/{{ asset.id }}">
     {% if let Some(thumb) = asset.thumbnail_hash %}
     <img src="/blobs/{{ thumb }}" alt="{{ asset.original_filename }}" loading="lazy">
@@ -13,4 +15,5 @@
   </a>
   {% endfor %}
 </div>
+{% endfor %}
 {% endif %}

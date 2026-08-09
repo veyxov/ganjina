@@ -4,7 +4,7 @@
 <header class="page-header">
   <h1>Photos</h1>
   <span class="count">
-    {{ assets.len() }} item{% if assets.len() != 1 %}s{% endif %}
+    {{ count }} item{% if count != 1 %}s{% endif %}
     {% if failed_count > 0 %}&middot; <span style="color: var(--accent);">{{ failed_count }} need{% if failed_count == 1 %}s{% endif %} attention</span>{% endif %}
   </span>
 </header>

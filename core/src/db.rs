@@ -21,11 +21,12 @@ pub struct Asset {
     pub size_bytes: i64,
     pub content_type: String,
     pub thumbnail_hash: Option<String>,
+    pub owner_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 const ASSET_COLUMNS: &str =
-    "id, hash, original_filename, size_bytes, content_type, thumbnail_hash, created_at";
+    "id, hash, original_filename, size_bytes, content_type, thumbnail_hash, owner_id, created_at";
 
 /// Inserts a new asset row for a freshly stored blob. Caller is responsible for
 /// only calling this when `BlobStore::store` reported a new (non-duplicate) blob.
@@ -97,6 +98,85 @@ pub async fn list_assets(pool: &Pool) -> anyhow::Result<Vec<Asset>> {
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+/// Deletes the asset row (and its collection memberships — hash is UNIQUE per
+/// asset, so no other row can reference the same blob) and returns the hashes
+/// so the caller can remove the now-unreferenced blob files.
+pub async fn delete_asset(pool: &Pool, id: &str) -> anyhow::Result<Option<(String, Option<String>)>> {
+    let asset = asset_by_id(pool, id).await?;
+    let Some(asset) = asset else { return Ok(None) };
+
+    sqlx::query("DELETE FROM collection_assets WHERE asset_id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM photo_metadata WHERE asset_id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM jobs WHERE asset_id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM asset_links WHERE asset_a = ? OR asset_b = ?")
+        .bind(id)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM assets WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(Some((asset.hash, asset.thumbnail_hash)))
+}
+
+#[derive(sqlx::FromRow, Clone)]
+pub struct Owner {
+    pub id: String,
+    pub name: String,
+}
+
+pub async fn create_owner(pool: &Pool, name: &str) -> anyhow::Result<String> {
+    let id = Uuid::now_v7().to_string();
+    sqlx::query("INSERT INTO owners (id, name) VALUES (?, ?)")
+        .bind(&id)
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(id)
+}
+
+pub async fn list_owners(pool: &Pool) -> anyhow::Result<Vec<Owner>> {
+    let rows = sqlx::query_as::<_, Owner>("SELECT id, name FROM owners ORDER BY name")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows)
+}
+
+pub async fn set_asset_owner(pool: &Pool, asset_id: &str, owner_id: Option<&str>) -> anyhow::Result<()> {
+    sqlx::query("UPDATE assets SET owner_id = ? WHERE id = ?")
+        .bind(owner_id)
+        .bind(asset_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// True if any asset still points at this hash as its original or thumbnail —
+/// content-addressing means two different assets can share a hash (e.g.
+/// identical-after-resize thumbnails), so a blob is only safe to delete once
+/// nothing references it any more.
+pub async fn hash_still_referenced(pool: &Pool, hash: &str) -> anyhow::Result<bool> {
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM assets WHERE hash = ? OR thumbnail_hash = ?",
+    )
+    .bind(hash)
+    .bind(hash)
+    .fetch_one(pool)
+    .await?;
+    Ok(count > 0)
 }
 
 #[derive(sqlx::FromRow, Clone)]

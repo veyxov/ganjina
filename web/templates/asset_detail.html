@@ -44,6 +44,20 @@
       {% endif %}
     </dl>
 
+    <h2>Owner</h2>
+    <form action="/assets/{{ asset.id }}/owner" method="post" style="margin-bottom: var(--space-1);">
+      <select name="owner_id" onchange="this.form.submit()">
+        <option value="" {% if asset.owner_id.is_none() %}selected{% endif %}>Unassigned</option>
+        {% for o in owners %}
+        <option value="{{ o.id }}" {% if asset.owner_id.as_deref() == Some(o.id.as_str()) %}selected{% endif %}>{{ o.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <form class="new-collection" action="/owners" method="post" style="padding: 0;">
+      <input type="text" name="name" placeholder="New owner">
+      <button type="submit" title="Create">+</button>
+    </form>
+
     <h2>Collections</h2>
     {% if in_collections.is_empty() %}
     <p class="empty" style="padding: 0; text-align: left;">Not in any collection.</p>
@@ -73,6 +87,13 @@
       </select>
     </form>
     {% endif %}
+
+    <form action="/assets/{{ asset.id }}/delete" method="post"
+          onsubmit="return confirm('Delete this item permanently?')" style="margin-top: var(--space-5);">
+      <button type="submit" style="background: none; border: 1px solid var(--muted); color: var(--muted); border-radius: var(--radius); padding: var(--space-2); width: 100%; cursor: pointer; font-size: 0.85rem;">
+        Delete
+      </button>
+    </form>
   </div>
 </div>
 {% endblock %}
