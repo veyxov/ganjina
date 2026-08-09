@@ -6,6 +6,8 @@ export interface Asset {
   content_type: string;
   thumbnail_hash: string | null;
   owner_id: string | null;
+  width: number | null;
+  height: number | null;
   created_at: string;
 }
 

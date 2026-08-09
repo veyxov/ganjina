@@ -11,11 +11,16 @@ pub struct Asset {
     pub content_type: String,
     pub thumbnail_hash: Option<String>,
     pub owner_id: Option<String>,
+    /// Original (not thumbnail) pixel dimensions — null until the thumbnail
+    /// job runs. Used for the justified-layout gallery, which needs real
+    /// aspect ratios instead of forcing every tile to a square crop.
+    pub width: Option<i64>,
+    pub height: Option<i64>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub(crate) const ASSET_COLUMNS: &str =
-    "id, hash, original_filename, size_bytes, content_type, thumbnail_hash, owner_id, created_at";
+pub(crate) const ASSET_COLUMNS: &str = "id, hash, original_filename, size_bytes, content_type, \
+    thumbnail_hash, owner_id, width, height, created_at";
 
 /// Inserts a new asset row for a freshly stored blob. Caller is responsible for
 /// only calling this when `BlobStore::store` reported a new (non-duplicate) blob.
@@ -44,9 +49,17 @@ pub async fn insert_asset(
     Ok(id)
 }
 
-pub async fn set_thumbnail_hash(pool: &Pool, asset_id: &str, thumbnail_hash: &str) -> anyhow::Result<()> {
-    sqlx::query("UPDATE assets SET thumbnail_hash = ? WHERE id = ?")
+pub async fn set_thumbnail(
+    pool: &Pool,
+    asset_id: &str,
+    thumbnail_hash: &str,
+    width: u32,
+    height: u32,
+) -> anyhow::Result<()> {
+    sqlx::query("UPDATE assets SET thumbnail_hash = ?, width = ?, height = ? WHERE id = ?")
         .bind(thumbnail_hash)
+        .bind(width as i64)
+        .bind(height as i64)
         .bind(asset_id)
         .execute(pool)
         .await?;

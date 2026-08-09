@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Asset } from './types';
   import { api, monthLabel } from './api';
-  import { navigate } from './router.svelte';
+  import MonthGroup from './MonthGroup.svelte';
 
   let {
     title,
@@ -45,10 +45,6 @@
       input.value = '';
     }
   }
-
-  function open(asset: Asset) {
-    navigate(`/assets/${asset.id}`);
-  }
 </script>
 
 <header class="page-header">
@@ -76,19 +72,7 @@
   <p class="empty">Nothing here yet.</p>
 {:else}
   {#each groups as group (group.label)}
-    <h2 class="month-label">{group.label}</h2>
-    <div class="grid">
-      {#each group.items as asset (asset.id)}
-        <button class="tile" onclick={() => open(asset)}>
-          <img
-            src="/blobs/{asset.thumbnail_hash ?? asset.hash}"
-            alt={asset.original_filename}
-            loading="lazy"
-          />
-          <span class="name">{asset.original_filename}</span>
-        </button>
-      {/each}
-    </div>
+    <MonthGroup label={group.label} items={group.items} />
   {/each}
 {/if}
 
@@ -138,63 +122,6 @@
     height: 18px;
     opacity: 0.8;
     flex: none;
-  }
-
-  .month-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--muted);
-    margin: var(--space-5) 0 var(--space-3);
-  }
-  .month-label:first-of-type {
-    margin-top: 0;
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-  }
-
-  .tile {
-    position: relative;
-    display: block;
-    aspect-ratio: 1;
-    border-radius: var(--radius);
-    overflow: hidden;
-    background: var(--surface);
-    transition: transform 0.15s ease;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    width: 100%;
-  }
-  .tile:hover {
-    transform: translateY(-2px);
-  }
-  .tile img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  .tile .name {
-    position: absolute;
-    inset: auto 0 0 0;
-    padding: var(--space-2) var(--space-2) var(--space-1);
-    font-size: 0.72rem;
-    color: #fff;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    text-align: left;
-  }
-  .tile:hover .name {
-    opacity: 1;
   }
 
   .empty {

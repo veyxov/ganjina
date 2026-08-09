@@ -32,17 +32,19 @@ pub async fn process_asset(
     }
 
     match photos::generate_thumbnail(bytes.to_vec(), content_type).await {
-        Ok(thumb_bytes) => match store.store(&thumb_bytes).await {
-            Ok((thumb_hash, _)) => match db::set_thumbnail_hash(&pool, &asset_id, &thumb_hash).await {
-                Ok(()) => {
-                    let _ = db::record_job(&pool, &asset_id, "thumbnail", "success", None).await;
-                    tracing::info!(asset_id, "thumbnail ready");
+        Ok(thumb) => match store.store(&thumb.bytes).await {
+            Ok((thumb_hash, _)) => {
+                match db::set_thumbnail(&pool, &asset_id, &thumb_hash, thumb.width, thumb.height).await {
+                    Ok(()) => {
+                        let _ = db::record_job(&pool, &asset_id, "thumbnail", "success", None).await;
+                        tracing::info!(asset_id, "thumbnail ready");
+                    }
+                    Err(e) => {
+                        tracing::error!(asset_id, error = %e, "failed to save thumbnail hash");
+                        let _ = db::record_job(&pool, &asset_id, "thumbnail", "failed", Some(&e.to_string())).await;
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(asset_id, error = %e, "failed to save thumbnail hash");
-                    let _ = db::record_job(&pool, &asset_id, "thumbnail", "failed", Some(&e.to_string())).await;
-                }
-            },
+            }
             Err(e) => {
                 tracing::error!(asset_id, error = %e, "failed to store thumbnail blob");
                 let _ = db::record_job(&pool, &asset_id, "thumbnail", "failed", Some(&e.to_string())).await;

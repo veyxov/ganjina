@@ -1,13 +1,23 @@
 const MAX_EDGE: u32 = 400;
 
-/// Generates a JPEG thumbnail for a photo or video. Runs blocking work
-/// (subprocess calls, image decode/resize) on a blocking thread pool — this is
-/// always called from a background job, never the request path.
-pub async fn generate(bytes: Vec<u8>, content_type: String) -> anyhow::Result<Vec<u8>> {
+pub struct Thumbnail {
+    pub bytes: Vec<u8>,
+    /// Dimensions of the original (not the thumbnail) — the gallery layout
+    /// needs the real aspect ratio, and we've already decoded the full image
+    /// here, so returning it costs nothing extra.
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Generates a JPEG thumbnail for a photo or video, plus the original's pixel
+/// dimensions. Runs blocking work (subprocess calls, image decode/resize) on a
+/// blocking thread pool — this is always called from a background job, never
+/// the request path.
+pub async fn generate(bytes: Vec<u8>, content_type: String) -> anyhow::Result<Thumbnail> {
     tokio::task::spawn_blocking(move || generate_blocking(&bytes, &content_type)).await?
 }
 
-fn generate_blocking(bytes: &[u8], content_type: &str) -> anyhow::Result<Vec<u8>> {
+fn generate_blocking(bytes: &[u8], content_type: &str) -> anyhow::Result<Thumbnail> {
     let img = if content_type.starts_with("video/") {
         decode_video_frame(bytes, content_type)?
     } else if matches!(content_type, "image/heic" | "image/heif") {
@@ -16,10 +26,11 @@ fn generate_blocking(bytes: &[u8], content_type: &str) -> anyhow::Result<Vec<u8>
         image::load_from_memory(bytes)?
     };
 
+    let (width, height) = (img.width(), img.height());
     let thumb = img.thumbnail(MAX_EDGE, MAX_EDGE);
     let mut out = Vec::new();
     thumb.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Jpeg)?;
-    Ok(out)
+    Ok(Thumbnail { bytes: out, width, height })
 }
 
 /// Shells out to ffmpeg to grab one frame — no Rust video-decoding dependency
