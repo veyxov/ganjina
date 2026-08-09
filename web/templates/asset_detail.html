@@ -10,11 +10,11 @@
 </div>
 
 <div class="detail">
-  <div class="preview">
+  <div class="preview" id="preview">
     {% if asset.content_type.starts_with("video/") %}
     <video src="/blobs/{{ asset.hash }}" controls style="width: 100%; display: block;"></video>
     {% else %}
-    <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}">
+    <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}" id="preview-img" title="Click to view fullscreen">
     {% endif %}
   </div>
   <div class="panel">
@@ -25,7 +25,7 @@
       <dt>Type</dt>
       <dd>{{ asset.content_type }}</dd>
       <dt>Size</dt>
-      <dd>{{ asset.size_bytes }} bytes</dd>
+      <dd>{{ asset.size_bytes|human_size }}</dd>
       <dt>Uploaded</dt>
       <dd>{{ asset.created_at.format("%Y-%m-%d %H:%M") }}</dd>
       {% if let Some(m) = metadata %}
@@ -96,4 +96,16 @@
     </form>
   </div>
 </div>
+
+<script>
+  (function () {
+    var img = document.getElementById('preview-img');
+    if (!img) return;
+    var preview = document.getElementById('preview');
+    function close() { preview.classList.remove('fullscreen'); }
+    img.addEventListener('click', function () { preview.classList.toggle('fullscreen'); });
+    preview.addEventListener('click', function (e) { if (e.target === preview) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  })();
+</script>
 {% endblock %}

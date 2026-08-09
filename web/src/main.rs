@@ -11,6 +11,23 @@ use axum::{
 use tower_http::trace::TraceLayer;
 use vault_core::{db, BlobStore, Pool};
 
+mod filters {
+    pub fn human_size(bytes: &i64) -> askama::Result<String> {
+        const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+        let mut size = *bytes as f64;
+        let mut unit = 0;
+        while size >= 1024.0 && unit < UNITS.len() - 1 {
+            size /= 1024.0;
+            unit += 1;
+        }
+        Ok(if unit == 0 {
+            format!("{bytes} B")
+        } else {
+            format!("{size:.1} {}", UNITS[unit])
+        })
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     pool: Pool,
