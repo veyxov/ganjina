@@ -1,1 +1,5 @@
-// Photo/video Module implementation lands here once core's Module trait exists.
+mod exif_data;
+mod thumbnail;
+
+pub use exif_data::{extract as extract_exif, ExifData};
+pub use thumbnail::generate as generate_thumbnail;

@@ -20,25 +20,30 @@ pub struct Asset {
     pub original_filename: String,
     pub size_bytes: i64,
     pub content_type: String,
+    pub thumbnail_hash: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+const ASSET_COLUMNS: &str =
+    "id, hash, original_filename, size_bytes, content_type, thumbnail_hash, created_at";
+
 /// Inserts a new asset row for a freshly stored blob. Caller is responsible for
 /// only calling this when `BlobStore::store` reported a new (non-duplicate) blob.
+/// Returns the new asset's id so the caller can enqueue processing for it.
 pub async fn insert_asset(
     pool: &Pool,
     hash: &str,
     original_filename: &str,
     size_bytes: i64,
     content_type: &str,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let id = Uuid::now_v7().to_string();
     let created_at = chrono::Utc::now();
     sqlx::query(
         "INSERT INTO assets (id, hash, original_filename, size_bytes, content_type, created_at)
          VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(id)
+    .bind(&id)
     .bind(hash)
     .bind(original_filename)
     .bind(size_bytes)
@@ -46,22 +51,39 @@ pub async fn insert_asset(
     .bind(created_at)
     .execute(pool)
     .await?;
+    Ok(id)
+}
+
+pub async fn set_thumbnail_hash(pool: &Pool, asset_id: &str, thumbnail_hash: &str) -> anyhow::Result<()> {
+    sqlx::query("UPDATE assets SET thumbnail_hash = ? WHERE id = ?")
+        .bind(thumbnail_hash)
+        .bind(asset_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
+/// Thumbnails are always stored as JPEG (see `photos::generate_thumbnail`), so a
+/// hash matching an asset's `thumbnail_hash` gets a hardcoded content type
+/// rather than a lookup — thumbnails aren't assets with their own row.
 pub async fn content_type_for_hash(pool: &Pool, hash: &str) -> anyhow::Result<Option<String>> {
-    let row = sqlx::query_scalar::<_, String>("SELECT content_type FROM assets WHERE hash = ?")
-        .bind(hash)
-        .fetch_optional(pool)
-        .await?;
+    let row = sqlx::query_scalar::<_, String>(
+        "SELECT content_type FROM assets WHERE hash = ?
+         UNION ALL
+         SELECT 'image/jpeg' FROM assets WHERE thumbnail_hash = ?
+         LIMIT 1",
+    )
+    .bind(hash)
+    .bind(hash)
+    .fetch_optional(pool)
+    .await?;
     Ok(row)
 }
 
 pub async fn asset_by_id(pool: &Pool, id: &str) -> anyhow::Result<Option<Asset>> {
-    let row = sqlx::query_as::<_, Asset>(
-        "SELECT id, hash, original_filename, size_bytes, content_type, created_at
-         FROM assets WHERE id = ?",
-    )
+    let row = sqlx::query_as::<_, Asset>(&format!(
+        "SELECT {ASSET_COLUMNS} FROM assets WHERE id = ?"
+    ))
     .bind(id)
     .fetch_optional(pool)
     .await?;
@@ -69,10 +91,9 @@ pub async fn asset_by_id(pool: &Pool, id: &str) -> anyhow::Result<Option<Asset>>
 }
 
 pub async fn list_assets(pool: &Pool) -> anyhow::Result<Vec<Asset>> {
-    let rows = sqlx::query_as::<_, Asset>(
-        "SELECT id, hash, original_filename, size_bytes, content_type, created_at
-         FROM assets ORDER BY created_at DESC",
-    )
+    let rows = sqlx::query_as::<_, Asset>(&format!(
+        "SELECT {ASSET_COLUMNS} FROM assets ORDER BY created_at DESC"
+    ))
     .fetch_all(pool)
     .await?;
     Ok(rows)
@@ -130,13 +151,12 @@ pub async fn add_asset_to_collection(
 }
 
 pub async fn list_assets_in_collection(pool: &Pool, collection_id: &str) -> anyhow::Result<Vec<Asset>> {
-    let rows = sqlx::query_as::<_, Asset>(
-        "SELECT a.id, a.hash, a.original_filename, a.size_bytes, a.content_type, a.created_at
-         FROM assets a
+    let rows = sqlx::query_as::<_, Asset>(&format!(
+        "SELECT {ASSET_COLUMNS} FROM assets a
          JOIN collection_assets ca ON ca.asset_id = a.id
          WHERE ca.collection_id = ?
-         ORDER BY a.created_at DESC",
-    )
+         ORDER BY a.created_at DESC"
+    ))
     .bind(collection_id)
     .fetch_all(pool)
     .await?;
@@ -191,4 +211,120 @@ pub async fn link_assets(pool: &Pool, asset_a: &str, asset_b: &str) -> anyhow::R
     .execute(pool)
     .await?;
     Ok(())
+}
+
+#[derive(sqlx::FromRow)]
+pub struct PhotoMetadata {
+    pub taken_at_local: Option<chrono::NaiveDateTime>,
+    pub taken_at_offset_minutes: Option<i32>,
+    pub camera: Option<String>,
+    pub gps_lat: Option<f64>,
+    pub gps_lon: Option<f64>,
+}
+
+pub async fn set_photo_metadata(
+    pool: &Pool,
+    asset_id: &str,
+    m: &PhotoMetadata,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO photo_metadata
+            (asset_id, taken_at_local, taken_at_offset_minutes, camera, gps_lat, gps_lon)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(asset_id) DO UPDATE SET
+            taken_at_local = excluded.taken_at_local,
+            taken_at_offset_minutes = excluded.taken_at_offset_minutes,
+            camera = excluded.camera,
+            gps_lat = excluded.gps_lat,
+            gps_lon = excluded.gps_lon",
+    )
+    .bind(asset_id)
+    .bind(m.taken_at_local)
+    .bind(m.taken_at_offset_minutes)
+    .bind(&m.camera)
+    .bind(m.gps_lat)
+    .bind(m.gps_lon)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn photo_metadata_for_asset(
+    pool: &Pool,
+    asset_id: &str,
+) -> anyhow::Result<Option<PhotoMetadata>> {
+    let row = sqlx::query_as::<_, PhotoMetadata>(
+        "SELECT taken_at_local, taken_at_offset_minutes, camera, gps_lat, gps_lon
+         FROM photo_metadata WHERE asset_id = ?",
+    )
+    .bind(asset_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+/// Records one processing attempt for an asset (thumbnail/EXIF extraction). An
+/// append-only log rather than an in-place-updated row — simplest thing that
+/// gives durability/observability for the job pipeline without a state machine.
+pub async fn record_job(
+    pool: &Pool,
+    asset_id: &str,
+    job_type: &str,
+    status: &str,
+    error: Option<&str>,
+) -> anyhow::Result<()> {
+    let now = chrono::Utc::now();
+    sqlx::query(
+        "INSERT INTO jobs (id, asset_id, job_type, status, error, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(Uuid::now_v7().to_string())
+    .bind(asset_id)
+    .bind(job_type)
+    .bind(status)
+    .bind(error)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Neighboring asset ids in the same order as `list_assets` (newest first), for
+/// prev/next navigation in the detail view.
+pub async fn adjacent_asset_ids(
+    pool: &Pool,
+    asset_id: &str,
+) -> anyhow::Result<(Option<String>, Option<String>)> {
+    let prev = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM assets WHERE created_at > (SELECT created_at FROM assets WHERE id = ?)
+         ORDER BY created_at ASC LIMIT 1",
+    )
+    .bind(asset_id)
+    .fetch_optional(pool)
+    .await?;
+    let next = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM assets WHERE created_at < (SELECT created_at FROM assets WHERE id = ?)
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(asset_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok((prev, next))
+}
+
+/// Assets whose most recent job attempt failed — surfaced in the UI so a
+/// failure never gets silently lost.
+pub async fn failed_asset_count(pool: &Pool) -> anyhow::Result<i64> {
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(DISTINCT asset_id) FROM jobs j1
+         WHERE status = 'failed' AND NOT EXISTS (
+            SELECT 1 FROM jobs j2
+            WHERE j2.asset_id = j1.asset_id AND j2.job_type = j1.job_type
+              AND j2.created_at > j1.created_at
+         )",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
 }

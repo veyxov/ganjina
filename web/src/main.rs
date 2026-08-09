@@ -23,6 +23,7 @@ struct IndexTemplate {
     assets: Vec<db::Asset>,
     collections: Vec<db::Collection>,
     active_collection: Option<String>,
+    failed_count: i64,
 }
 
 #[derive(Template)]
@@ -53,6 +54,9 @@ struct AssetDetailTemplate {
     active_collection: Option<String>,
     in_collections: Vec<db::Collection>,
     available_collections: Vec<db::Collection>,
+    metadata: Option<db::PhotoMetadata>,
+    prev_id: Option<String>,
+    next_id: Option<String>,
 }
 
 #[tokio::main]
@@ -97,10 +101,12 @@ async fn main() -> anyhow::Result<()> {
 async fn index(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let assets = db::list_assets(&state.pool).await?;
     let collections = db::list_collections(&state.pool).await?;
+    let failed_count = db::failed_asset_count(&state.pool).await?;
     let html = IndexTemplate {
         assets,
         collections,
         active_collection: None,
+        failed_count,
     }
     .render()?;
     Ok(Html(html))
@@ -167,12 +173,18 @@ async fn view_asset(
         .cloned()
         .collect();
 
+    let metadata = db::photo_metadata_for_asset(&state.pool, &id).await?;
+    let (prev_id, next_id) = db::adjacent_asset_ids(&state.pool, &id).await?;
+
     let html = AssetDetailTemplate {
         asset,
         collections: all_collections,
         active_collection: None,
         in_collections,
         available_collections,
+        metadata,
+        prev_id,
+        next_id,
     }
     .render()?;
     Ok(Html(html))
@@ -203,7 +215,7 @@ async fn upload(
 
         let (hash, is_new) = state.store.store(&bytes).await?;
         if is_new {
-            db::insert_asset(
+            let asset_id = db::insert_asset(
                 &state.pool,
                 &hash,
                 &original_filename,
@@ -212,11 +224,72 @@ async fn upload(
             )
             .await?;
             tracing::info!(%hash, original_filename, size_bytes = bytes.len(), "stored new asset");
+
+            // Off the request path — upload returns immediately, EXIF/thumbnail
+            // land whenever they're done. Failures are logged to the jobs table,
+            // never lose the already-stored asset.
+            tokio::spawn(process_asset(
+                state.pool.clone(),
+                state.store.clone(),
+                asset_id,
+                bytes,
+                content_type,
+            ));
         } else {
             tracing::info!(%hash, original_filename, "duplicate upload, skipped");
         }
     }
     Ok(Redirect::to("/"))
+}
+
+async fn process_asset(
+    pool: Pool,
+    store: Arc<BlobStore>,
+    asset_id: String,
+    bytes: axum::body::Bytes,
+    content_type: String,
+) {
+    if let Some(exif) = photos::extract_exif(&bytes, &content_type) {
+        let m = db::PhotoMetadata {
+            taken_at_local: exif.taken_at_local,
+            taken_at_offset_minutes: exif.taken_at_offset_minutes,
+            camera: exif.camera,
+            gps_lat: exif.gps_lat,
+            gps_lon: exif.gps_lon,
+        };
+        match db::set_photo_metadata(&pool, &asset_id, &m).await {
+            Ok(()) => {
+                let _ = db::record_job(&pool, &asset_id, "extract_metadata", "success", None).await;
+            }
+            Err(e) => {
+                tracing::error!(asset_id, error = %e, "failed to save exif metadata");
+                let _ = db::record_job(&pool, &asset_id, "extract_metadata", "failed", Some(&e.to_string())).await;
+            }
+        }
+    }
+
+    match photos::generate_thumbnail(bytes.to_vec(), content_type).await {
+        Ok(thumb_bytes) => match store.store(&thumb_bytes).await {
+            Ok((thumb_hash, _)) => match db::set_thumbnail_hash(&pool, &asset_id, &thumb_hash).await {
+                Ok(()) => {
+                    let _ = db::record_job(&pool, &asset_id, "thumbnail", "success", None).await;
+                    tracing::info!(asset_id, "thumbnail ready");
+                }
+                Err(e) => {
+                    tracing::error!(asset_id, error = %e, "failed to save thumbnail hash");
+                    let _ = db::record_job(&pool, &asset_id, "thumbnail", "failed", Some(&e.to_string())).await;
+                }
+            },
+            Err(e) => {
+                tracing::error!(asset_id, error = %e, "failed to store thumbnail blob");
+                let _ = db::record_job(&pool, &asset_id, "thumbnail", "failed", Some(&e.to_string())).await;
+            }
+        },
+        Err(e) => {
+            tracing::error!(asset_id, error = %e, "failed to generate thumbnail");
+            let _ = db::record_job(&pool, &asset_id, "thumbnail", "failed", Some(&e.to_string())).await;
+        }
+    }
 }
 
 async fn serve_blob(

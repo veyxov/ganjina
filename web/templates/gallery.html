@@ -4,7 +4,11 @@
 <div class="grid">
   {% for asset in assets %}
   <a class="tile" href="/assets/{{ asset.id }}">
+    {% if let Some(thumb) = asset.thumbnail_hash %}
+    <img src="/blobs/{{ thumb }}" alt="{{ asset.original_filename }}" loading="lazy">
+    {% else %}
     <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}" loading="lazy">
+    {% endif %}
     <span class="name">{{ asset.original_filename }}</span>
   </a>
   {% endfor %}
