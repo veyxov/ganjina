@@ -11,9 +11,13 @@ impl BlobStore {
         Self { root: root.into() }
     }
 
-    /// Sharded path for a hash: `<root>/<hash[0:2]>/<hash[2:4]>/<hash>`.
+    /// Sharded dir for a hash: `<root>/<hash[0:2]>/<hash[2:4]>`.
+    fn dir_for(&self, hash: &str) -> PathBuf {
+        self.root.join(&hash[0..2]).join(&hash[2..4])
+    }
+
     fn path_for(&self, hash: &str) -> PathBuf {
-        self.root.join(&hash[0..2]).join(&hash[2..4]).join(hash)
+        self.dir_for(hash).join(hash)
     }
 
     /// Hashes `bytes`, writes them to a temp file, then atomically renames into
@@ -21,14 +25,14 @@ impl BlobStore {
     /// new blob (false = already existed, i.e. a duplicate).
     pub async fn store(&self, bytes: &[u8]) -> std::io::Result<(String, bool)> {
         let hash = blake3::hash(bytes).to_hex().to_string();
-        let final_path = self.path_for(&hash);
+        let dir = self.dir_for(&hash);
+        let final_path = dir.join(&hash);
 
-        if final_path.exists() {
+        if tokio::fs::try_exists(&final_path).await? {
             return Ok((hash, false));
         }
 
-        let dir = final_path.parent().expect("path_for always has a parent");
-        tokio::fs::create_dir_all(dir).await?;
+        tokio::fs::create_dir_all(&dir).await?;
 
         let tmp_path = dir.join(format!("{hash}.tmp"));
         let mut tmp_file = tokio::fs::File::create(&tmp_path).await?;

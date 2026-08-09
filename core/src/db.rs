@@ -20,7 +20,7 @@ pub struct Asset {
     pub original_filename: String,
     pub size_bytes: i64,
     pub content_type: String,
-    pub created_at: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Inserts a new asset row for a freshly stored blob. Caller is responsible for
@@ -33,7 +33,7 @@ pub async fn insert_asset(
     content_type: &str,
 ) -> anyhow::Result<()> {
     let id = Uuid::now_v7().to_string();
-    let created_at = chrono::Utc::now().to_rfc3339();
+    let created_at = chrono::Utc::now();
     sqlx::query(
         "INSERT INTO assets (id, hash, original_filename, size_bytes, content_type, created_at)
          VALUES (?, ?, ?, ?, ?, ?)",

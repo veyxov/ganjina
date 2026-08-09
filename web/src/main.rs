@@ -85,32 +85,51 @@ async fn serve_blob(
     Path(hash): Path<String>,
 ) -> Result<Response, AppError> {
     if !vault_core::store::is_valid_hash(&hash) {
-        return Err(AppError(anyhow::anyhow!("invalid hash")));
+        return Err(AppError::BadRequest("invalid hash".into()));
     }
     let path = state.store.read_path(&hash);
-    let bytes = tokio::fs::read(&path)
-        .await
-        .map_err(|_| AppError(anyhow::anyhow!("blob not found")))?;
+    let open_file = async {
+        tokio::fs::File::open(&path).await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AppError::NotFound
+            } else {
+                AppError::from(e)
+            }
+        })
+    };
+    let lookup_content_type = async {
+        db::content_type_for_hash(&state.pool, &hash)
+            .await
+            .map_err(AppError::from)
+    };
+    let (file, content_type) = tokio::try_join!(open_file, lookup_content_type)?;
 
-    let content_type = db::content_type_for_hash(&state.pool, &hash)
-        .await?
-        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file));
 
-    Ok(([(header::CONTENT_TYPE, content_type)], bytes).into_response())
+    Ok(([(header::CONTENT_TYPE, content_type)], body).into_response())
 }
 
-/// Wraps any error into a 500 response — fine for this stage, will get real
-/// error handling once there's more than one failure mode to distinguish.
-struct AppError(anyhow::Error);
+enum AppError {
+    NotFound,
+    BadRequest(String),
+    Internal(anyhow::Error),
+}
 
 impl<E: Into<anyhow::Error>> From<E> for AppError {
     fn from(err: E) -> Self {
-        Self(err.into())
+        Self::Internal(err.into())
     }
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string()).into_response()
+        match self {
+            AppError::NotFound => (StatusCode::NOT_FOUND, "not found").into_response(),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
+            AppError::Internal(err) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+            }
+        }
     }
 }
