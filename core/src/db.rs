@@ -57,6 +57,17 @@ pub async fn content_type_for_hash(pool: &Pool, hash: &str) -> anyhow::Result<Op
     Ok(row)
 }
 
+pub async fn asset_by_id(pool: &Pool, id: &str) -> anyhow::Result<Option<Asset>> {
+    let row = sqlx::query_as::<_, Asset>(
+        "SELECT id, hash, original_filename, size_bytes, content_type, created_at
+         FROM assets WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
 pub async fn list_assets(pool: &Pool) -> anyhow::Result<Vec<Asset>> {
     let rows = sqlx::query_as::<_, Asset>(
         "SELECT id, hash, original_filename, size_bytes, content_type, created_at
@@ -67,7 +78,7 @@ pub async fn list_assets(pool: &Pool) -> anyhow::Result<Vec<Asset>> {
     Ok(rows)
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(sqlx::FromRow, Clone)]
 pub struct Collection {
     pub id: String,
     pub name: String,
@@ -130,6 +141,33 @@ pub async fn list_assets_in_collection(pool: &Pool, collection_id: &str) -> anyh
     .fetch_all(pool)
     .await?;
     Ok(rows)
+}
+
+pub async fn collections_for_asset(pool: &Pool, asset_id: &str) -> anyhow::Result<Vec<Collection>> {
+    let rows = sqlx::query_as::<_, Collection>(
+        "SELECT c.id, c.name, c.created_at
+         FROM collections c
+         JOIN collection_assets ca ON ca.collection_id = c.id
+         WHERE ca.asset_id = ?
+         ORDER BY c.name",
+    )
+    .bind(asset_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn remove_asset_from_collection(
+    pool: &Pool,
+    collection_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<()> {
+    sqlx::query("DELETE FROM collection_assets WHERE collection_id = ? AND asset_id = ?")
+        .bind(collection_id)
+        .bind(asset_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 /// Links two assets of any type (e.g. a note and the photo it's about). Stores

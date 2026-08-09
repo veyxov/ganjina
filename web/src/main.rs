@@ -45,6 +45,16 @@ struct AddAssetToCollection {
     collection_id: String,
 }
 
+#[derive(Template)]
+#[template(path = "asset_detail.html")]
+struct AssetDetailTemplate {
+    asset: db::Asset,
+    collections: Vec<db::Collection>,
+    active_collection: Option<String>,
+    in_collections: Vec<db::Collection>,
+    available_collections: Vec<db::Collection>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -73,6 +83,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/collections", post(create_collection))
         .route("/collections/{id}", get(view_collection))
         .route("/collections/add-asset", post(add_asset_to_collection))
+        .route("/collections/remove-asset", post(remove_asset_from_collection))
+        .route("/assets/{id}", get(view_asset))
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 
@@ -137,6 +149,41 @@ async fn add_asset_to_collection(
         "added asset to collection"
     );
     Ok(Redirect::to("/"))
+}
+
+async fn view_asset(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Html<String>, AppError> {
+    let asset = db::asset_by_id(&state.pool, &id)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let all_collections = db::list_collections(&state.pool).await?;
+    let in_collections = db::collections_for_asset(&state.pool, &id).await?;
+    let in_ids: std::collections::HashSet<_> = in_collections.iter().map(|c| &c.id).collect();
+    let available_collections: Vec<db::Collection> = all_collections
+        .iter()
+        .filter(|c| !in_ids.contains(&c.id))
+        .cloned()
+        .collect();
+
+    let html = AssetDetailTemplate {
+        asset,
+        collections: all_collections,
+        active_collection: None,
+        in_collections,
+        available_collections,
+    }
+    .render()?;
+    Ok(Html(html))
+}
+
+async fn remove_asset_from_collection(
+    State(state): State<AppState>,
+    Form(form): Form<AddAssetToCollection>,
+) -> Result<Redirect, AppError> {
+    db::remove_asset_from_collection(&state.pool, &form.collection_id, &form.asset_id).await?;
+    Ok(Redirect::to(&format!("/assets/{}", form.asset_id)))
 }
 
 async fn upload(

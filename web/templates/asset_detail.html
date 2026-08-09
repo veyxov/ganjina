@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a class="back-link" href="/">&larr; Back</a>
+
+<div class="detail">
+  <div class="preview">
+    <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}">
+  </div>
+  <div class="panel">
+    <h2>Info</h2>
+    <dl>
+      <dt>Name</dt>
+      <dd>{{ asset.original_filename }}</dd>
+      <dt>Type</dt>
+      <dd>{{ asset.content_type }}</dd>
+      <dt>Size</dt>
+      <dd>{{ asset.size_bytes }} bytes</dd>
+      <dt>Uploaded</dt>
+      <dd>{{ asset.created_at.format("%Y-%m-%d %H:%M") }}</dd>
+    </dl>
+
+    <h2>Collections</h2>
+    {% if in_collections.is_empty() %}
+    <p class="empty" style="padding: 0; text-align: left;">Not in any collection.</p>
+    {% else %}
+    <ul class="chip-list">
+      {% for c in in_collections %}
+      <li class="chip">
+        <a href="/collections/{{ c.id }}">{{ c.name }}</a>
+        <form action="/collections/remove-asset" method="post">
+          <input type="hidden" name="asset_id" value="{{ asset.id }}">
+          <input type="hidden" name="collection_id" value="{{ c.id }}">
+          <button type="submit" title="Remove">&times;</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if !available_collections.is_empty() %}
+    <form action="/collections/add-asset" method="post" style="margin-top: var(--space-2);">
+      <input type="hidden" name="asset_id" value="{{ asset.id }}">
+      <select name="collection_id" onchange="this.form.submit()">
+        <option value="" selected disabled>Add to collection…</option>
+        {% for c in available_collections %}
+        <option value="{{ c.id }}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

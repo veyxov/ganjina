@@ -3,21 +3,10 @@
 {% else %}
 <div class="grid">
   {% for asset in assets %}
-  <div class="tile">
+  <a class="tile" href="/assets/{{ asset.id }}">
     <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}" loading="lazy">
     <span class="name">{{ asset.original_filename }}</span>
-    {% if !collections.is_empty() %}
-    <form class="add-to-collection" action="/collections/add-asset" method="post">
-      <input type="hidden" name="asset_id" value="{{ asset.id }}">
-      <select name="collection_id" onchange="this.form.submit()">
-        <option value="" selected disabled>Add to…</option>
-        {% for c in collections %}
-        <option value="{{ c.id }}">{{ c.name }}</option>
-        {% endfor %}
-      </select>
-    </form>
-    {% endif %}
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% endif %}

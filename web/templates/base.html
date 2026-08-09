@@ -152,6 +152,7 @@
 
     .tile {
       position: relative;
+      display: block;
       aspect-ratio: 1;
       border-radius: var(--radius);
       overflow: hidden;
@@ -176,29 +177,75 @@
     }
     .tile:hover .name { opacity: 1; }
 
-    .tile .add-to-collection {
-      position: absolute;
-      inset: var(--space-1) var(--space-1) auto auto;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-    }
-    .tile:hover .add-to-collection { opacity: 1; }
-    .add-to-collection select {
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: 0.68rem;
-      padding: 2px 4px;
-      max-width: 90px;
-    }
-
     .empty {
       color: var(--muted);
       font-size: 0.9rem;
       text-align: center;
       padding: var(--space-5) 0;
     }
+
+    .back-link {
+      display: inline-block;
+      margin-bottom: var(--space-4);
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .back-link:hover { color: var(--fg); }
+
+    .detail { display: flex; gap: var(--space-4); align-items: flex-start; }
+    .detail .preview {
+      flex: 1;
+      min-width: 0;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+      display: flex;
+    }
+    .detail .preview img { width: 100%; display: block; }
+
+    .detail .panel { flex: none; width: 260px; font-size: 0.85rem; }
+    .detail .panel h2 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: var(--space-4) 0 var(--space-2);
+    }
+    .detail .panel h2:first-child { margin-top: 0; }
+    .detail .panel dl { margin: 0; }
+    .detail .panel dt { color: var(--muted); }
+    .detail .panel dd { margin: 0 0 var(--space-2); word-break: break-all; }
+
+    .detail .panel select {
+      width: 100%;
+      background: var(--surface);
+      color: var(--fg);
+      border: none;
+      border-radius: var(--radius);
+      padding: var(--space-2);
+      font-size: 0.85rem;
+    }
+
+    .chip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+    .chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: var(--space-1) var(--space-2);
+    }
+    .chip a { color: var(--fg); text-decoration: none; font-size: 0.82rem; }
+    .chip button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0 0 0 var(--space-2);
+    }
+    .chip button:hover { color: var(--accent); }
   </style>
 </head>
 <body>
