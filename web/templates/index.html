@@ -1,147 +1,32 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ganjina</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #111113;
-      --surface: #1b1b1e;
-      --surface-hover: #232326;
-      --fg: #ededef;
-      --muted: #8b8d93;
-      --accent: #e0a446;
-      --accent-fg: #1a1305;
-      --radius: 10px;
-      --space-1: 4px;
-      --space-2: 8px;
-      --space-3: 16px;
-      --space-4: 24px;
-      --space-5: 40px;
-    }
+{% extends "base.html" %}
 
-    * { box-sizing: border-box; }
+{% block content %}
+<header class="page-header">
+  <h1>Photos</h1>
+  <span class="count">{{ assets.len() }} item{% if assets.len() != 1 %}s{% endif %}</span>
+</header>
 
-    body {
-      margin: 0;
-      padding: var(--space-5) var(--space-4) var(--space-5);
-      background: var(--bg);
-      color: var(--fg);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      -webkit-font-smoothing: antialiased;
-    }
+<form action="/upload" method="post" enctype="multipart/form-data">
+  <label class="dropzone">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span>Click to upload an image</span>
+    <input type="file" name="file" accept="image/*" required onchange="this.form.submit()">
+  </label>
+</form>
 
-    main { max-width: 960px; margin: 0 auto; }
-
-    header {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      margin-bottom: var(--space-5);
-    }
-
-    h1 {
-      font-size: 1.05rem;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      margin: 0;
-    }
-
-    .count {
-      color: var(--muted);
-      font-size: 0.85rem;
-    }
-
-    .dropzone {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--space-2);
-      padding: var(--space-4);
-      border-radius: var(--radius);
-      background: var(--surface);
-      color: var(--muted);
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: background 0.15s ease, color 0.15s ease;
-      margin-bottom: var(--space-5);
-    }
-    .dropzone:hover { background: var(--surface-hover); color: var(--fg); }
-    .dropzone input { display: none; }
-    .dropzone svg { width: 18px; height: 18px; opacity: 0.8; flex: none; }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: var(--space-3);
-    }
-
-    .tile {
-      position: relative;
-      aspect-ratio: 1;
-      border-radius: var(--radius);
-      overflow: hidden;
-      background: var(--surface);
-      transition: transform 0.15s ease;
-    }
-    .tile:hover { transform: translateY(-2px); }
-    .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-    .tile .name {
-      position: absolute;
-      inset: auto 0 0 0;
-      padding: var(--space-2) var(--space-2) var(--space-1);
-      font-size: 0.72rem;
-      color: #fff;
-      background: linear-gradient(to top, rgba(0,0,0,0.65), transparent);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-    }
-    .tile:hover .name { opacity: 1; }
-
-    .empty {
-      color: var(--muted);
-      font-size: 0.9rem;
-      text-align: center;
-      padding: var(--space-5) 0;
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <header>
-      <h1>Ganjina</h1>
-      <span class="count">{{ assets.len() }} item{% if assets.len() != 1 %}s{% endif %}</span>
-    </header>
-
-    <form action="/upload" method="post" enctype="multipart/form-data">
-      <label class="dropzone">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-          <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>Click to upload an image</span>
-        <input type="file" name="file" accept="image/*" required onchange="this.form.submit()">
-      </label>
-    </form>
-
-    {% if assets.is_empty() %}
-    <p class="empty">Nothing here yet.</p>
-    {% else %}
-    <div class="grid">
-      {% for asset in assets %}
-      <div class="tile">
-        <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}" loading="lazy">
-        <span class="name">{{ asset.original_filename }}</span>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-  </main>
-</body>
-</html>
+{% if assets.is_empty() %}
+<p class="empty">Nothing here yet.</p>
+{% else %}
+<div class="grid">
+  {% for asset in assets %}
+  <div class="tile">
+    <img src="/blobs/{{ asset.hash }}" alt="{{ asset.original_filename }}" loading="lazy">
+    <span class="name">{{ asset.original_filename }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
