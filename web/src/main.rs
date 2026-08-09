@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use tower_http::trace::TraceLayer;
 use vault_core::{db, BlobStore, Pool};
 
 #[derive(Clone)]
@@ -24,6 +25,13 @@ struct IndexTemplate {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
     let data_dir = std::path::Path::new("data");
     tokio::fs::create_dir_all(data_dir).await?;
 
@@ -36,10 +44,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/", get(index))
         .route("/upload", post(upload))
         .route("/blobs/{hash}", get(serve_blob))
-        .with_state(state);
+        .with_state(state)
+        .layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
-    println!("listening on http://127.0.0.1:3000");
+    tracing::info!("listening on http://127.0.0.1:3000");
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -75,6 +84,9 @@ async fn upload(
                 &content_type,
             )
             .await?;
+            tracing::info!(%hash, original_filename, size_bytes = bytes.len(), "stored new asset");
+        } else {
+            tracing::info!(%hash, original_filename, "duplicate upload, skipped");
         }
     }
     Ok(Redirect::to("/"))
@@ -128,6 +140,7 @@ impl IntoResponse for AppError {
             AppError::NotFound => (StatusCode::NOT_FOUND, "not found").into_response(),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
             AppError::Internal(err) => {
+                tracing::error!(error = %err, "internal error");
                 (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
             }
         }
